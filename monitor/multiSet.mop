@@ -1,0 +1,76 @@
+package mop;
+
+import concurrent.MyMultiset;
+import concurrent.MyElem;
+
+import java.util.Map;
+import java.util.HashMap;
+import java.util.HashSet;
+import com.google.common.collect.Multiset;
+import com.google.common.collect.HashMultiset;
+
+multiSet() {
+
+    Multiset<Integer> internalSet = HashMultiset.create();
+    // rid -> (lookup value, possible results)
+    Map<Integer, LookupResult> lookupReq = new HashMap<Integer, LookupResult>();
+
+    event write_commit after (MyElem elem1, MyElem elem2):
+        execution(* MyMultiset.setWriteFlag(MyElem, MyElem)) 
+        && args(elem1, elem2) {
+            internalSet.add(elem1.elem);
+            internalSet.add(elem2.elem);
+            System.out.println(String.format("insert %d, %d", elem1.elem, elem2.elem));
+            System.out.println(String.format("multiset: %s", internalSet.toString()));
+            for (Map.Entry<Integer, LookupResult> entry : lookupReq.entrySet()) {
+                LookupResult lkr = entry.getValue();
+                int lkv = lkr.value;
+                if (internalSet.contains(lkv)) {
+                    lkr.results.add(true);
+                } else {
+                    lkr.results.add(false);
+                }
+            }
+    }
+
+    event remove_commit after (int x):
+        execution(* MyMultiset.remove(int))
+        && args(x) {
+            internalSet.remove(x);
+            System.out.println(String.format("remove %d", x));
+            System.out.println(String.format("multiset: %s", internalSet.toString()));
+            for (Map.Entry<Integer, LookupResult> entry : lookupReq.entrySet()) {
+                LookupResult lkr = entry.getValue();
+                int lkv = lkr.value;
+                if (internalSet.contains(lkv)) {
+                    lkr.results.add(true);
+                } else {
+                    lkr.results.add(false);
+                }
+            }
+    }
+
+    event lookup_commit_before before(int rid, int value):
+        execution(* MyMultiset.lookup(int, int))
+        && args(rid, value) {
+        System.out.println(String.format("[thread %d] lookup %d begin", rid, value));
+        LookupResult lkr = new LookupResult(value);
+        if(internalSet.contains(value)) {
+            lkr.results.add(true);
+        } else {
+            lkr.results.add(false);
+        }
+        lookupReq.put(rid, lkr);
+    }
+
+    event lookup_commit_after after(int rid, int value) returning (boolean lookupResult):
+        execution(* MyMultiset.lookup(int, int))
+        && args(rid, value) {
+        LookupResult lkr = lookupReq.get(rid);
+        if (!lkr.results.contains(lookupResult)) {
+            System.out.println("[ERROR] multiset spec violation.");
+        }
+        lookupReq.remove(rid);
+        System.out.println(String.format("[thread %d] lookup %d end %s", rid, value, Boolean.toString(lookupResult)));
+    }
+}
