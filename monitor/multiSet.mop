@@ -1,8 +1,11 @@
 package mop;
 
+import concurrent.MyArrayList;
 import concurrent.MyMultiset;
 import concurrent.MyElem;
 
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -11,40 +14,76 @@ import com.google.common.collect.HashMultiset;
 
 multiSet() {
 
-    Multiset<Integer> internalSet = HashMultiset.create();
+    int listCount = 0;
+    // internal state: 2D arrays
+    List<Multiset<Integer>> internalSets = new ArrayList<Multiset<Integer>>();
     // Track the in progress lookup requests. rid -> (lookup value, possible results)
     Map<Integer, LookupResult> lookupReq = new HashMap<Integer, LookupResult>();
+    // Mapping from element to its corresponding row in 2D arrays.
+    Map<MyElem, Integer> elemToRow = new HashMap<MyElem, Integer>();
+
+    event insert_row after (Object addObj, List+ targetObj):
+        call(* List+.add(Object))
+        && args(addObj)
+        && target(targetObj) {
+            if (addObj instanceof MyArrayList) {
+                for(MyElem elem : ((MyArrayList) addObj).getList()) {
+                    elemToRow.put(elem, listCount);
+                }
+                internalSets.add(HashMultiset.create());
+                listCount++;
+            }
+    }
 
     event write_commit after (MyElem elem1, MyElem elem2):
         execution(* MyMultiset.setWriteFlag(MyElem, MyElem)) 
         && args(elem1, elem2) {
-            internalSet.add(elem1.elem);
-            internalSet.add(elem2.elem);
+            System.out.println("elem is in row" + elemToRow.get(elem1));
+            System.out.println("elem is in row" + elemToRow.get(elem2));
+            int row1 = elemToRow.get(elem1);
+            internalSets.get(row1).add(elem1.elem);
+            int row2 = elemToRow.get(elem2);
+            internalSets.get(row2).add(elem2.elem);
             System.out.println(String.format("insert %d, %d", elem1.elem, elem2.elem));
-            System.out.println(String.format("multiset: %s", internalSet.toString()));
+            // interate over the lookup requests and check the results of lookup
             for (Map.Entry<Integer, LookupResult> entry : lookupReq.entrySet()) {
                 LookupResult lkr = entry.getValue();
                 int lkv = lkr.value;
-                if (internalSet.contains(lkv)) {
-                    lkr.results.add(true);
-                } else {
+                boolean containsValue = false;
+                for (int i = 0; i < listCount; i++) {
+                    Multiset mulset = internalSets.get(i);
+                    if (mulset.contains(lkv)) {
+                        lkr.results.add(true);
+                        containsValue = true;
+                        break;
+                    }
+                }
+                if (! containsValue) {
                     lkr.results.add(false);
                 }
             }
     }
 
     event remove_commit after (MyElem cleanElem) returning (int cleanValue):
-        execution(* MyMultiset.cleanSetElem(MyElem))
+        execution(* MyMultiset.cleanSetElem(MyElem)) 
         && args(cleanElem) {
-            internalSet.remove(cleanValue);
+            System.out.println("elem is in row" + elemToRow.get(cleanElem));
+            int row = elemToRow.get(cleanElem);
+            internalSets.get(row).remove(cleanValue);
             System.out.println(String.format("remove %d", cleanValue));
-            System.out.println(String.format("multiset: %s", internalSet.toString()));
             for (Map.Entry<Integer, LookupResult> entry : lookupReq.entrySet()) {
                 LookupResult lkr = entry.getValue();
                 int lkv = lkr.value;
-                if (internalSet.contains(lkv)) {
-                    lkr.results.add(true);
-                } else {
+                boolean containsValue = false;
+                for (int i = 0; i < listCount; i++) {
+                    Multiset mulset = internalSets.get(i);
+                    if (mulset.contains(lkv)) {
+                        lkr.results.add(true);
+                        containsValue = true;
+                        break;
+                    }
+                }
+                if (! containsValue) {
                     lkr.results.add(false);
                 }
             }
@@ -55,11 +94,19 @@ multiSet() {
         && args(rid, value) {
         System.out.println(String.format("[thread %d] lookup %d begin", rid, value));
         LookupResult lkr = new LookupResult(value);
-        if(internalSet.contains(value)) {
-            lkr.results.add(true);
-        } else {
+        boolean containsValue = false;
+        for (int i = 0; i < listCount; i++) {
+            Multiset mulset = internalSets.get(i);
+            if (mulset.contains(value)) {
+                lkr.results.add(true);
+                containsValue = true;
+                break;
+            }
+        }
+        if (! containsValue) {
             lkr.results.add(false);
         }
+
         lookupReq.put(rid, lkr);
     }
 
