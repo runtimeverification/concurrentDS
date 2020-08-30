@@ -12,7 +12,7 @@ import com.google.common.collect.HashMultiset;
 multiSet() {
 
     Multiset<Integer> internalSet = HashMultiset.create();
-    // rid -> (lookup value, possible results)
+    // Track the in progress lookup requests. rid -> (lookup value, possible results)
     Map<Integer, LookupResult> lookupReq = new HashMap<Integer, LookupResult>();
 
     event write_commit after (MyElem elem1, MyElem elem2):
