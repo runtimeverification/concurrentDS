@@ -29,7 +29,11 @@ public class MyMultiset {
 
         MyElem setElem1 = elemArray.get(pos1);
         MyElem setElem2 = elemArray.get(pos2);
-        setWriteFlag(setElem1, setElem2);
+        synchronized(setElem1) {
+            synchronized(setElem2) {
+                 setWriteFlag(setElem1, setElem2);
+            }
+        }
 
         return true;
     }
@@ -38,9 +42,8 @@ public class MyMultiset {
         for (int i = 0; i < size; i++) {
             MyElem setElem = elemArray.get(i);
             synchronized(setElem) {
-                if (setElem.elem != null && setElem.elem == x) {
-                    setElem.elem = null;
-                    setElem.valid = false;
+                if (setElem.elem != null && setElem.elem == x && setElem.valid == true) {
+                    cleanSetElem(setElem);
                     return;
                 }
             }
@@ -82,12 +85,15 @@ public class MyMultiset {
     }
 
     private void setWriteFlag(MyElem elem1, MyElem elem2) {
-        synchronized (elem1) { // begin commit block
-            synchronized (elem2) {
-                elem1.valid = true;
-                elem2.valid = true;
-            } // end commit block
-        }
+        elem1.valid = true;
+        elem2.valid = true;
+    }
+
+    private int cleanSetElem(MyElem setElem) {
+        int cleanValue = setElem.elem;
+        setElem.elem = null;
+        setElem.valid = false;
+        return cleanValue;
     }
 
     private int findSlot(int x) {

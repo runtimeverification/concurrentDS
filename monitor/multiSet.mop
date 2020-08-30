@@ -33,11 +33,11 @@ multiSet() {
             }
     }
 
-    event remove_commit after (int x):
-        execution(* MyMultiset.remove(int))
-        && args(x) {
-            internalSet.remove(x);
-            System.out.println(String.format("remove %d", x));
+    event remove_commit after (MyElem cleanElem) returning (int cleanValue):
+        execution(* MyMultiset.cleanSetElem(MyElem))
+        && args(cleanElem) {
+            internalSet.remove(cleanValue);
+            System.out.println(String.format("remove %d", cleanValue));
             System.out.println(String.format("multiset: %s", internalSet.toString()));
             for (Map.Entry<Integer, LookupResult> entry : lookupReq.entrySet()) {
                 LookupResult lkr = entry.getValue();
