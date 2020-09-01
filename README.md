@@ -1,3 +1,11 @@
+# Build javamop and rv-monitor
+
+```
+sudo apt install openjdk-8-jdk
+git submodule update --init --recursive
+./build.sh
+```
+
 # Run tests with monitor
 
 ```
